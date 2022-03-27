@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 #Do point registration
-
-#$Id: point_reg.py,v 8bfe38a808d0 2017/05/11 02:07:07 watabe $
-
+#$Id: point_reg.py,v 05786703edeb 2022/03/27 03:06:37 watabe $
 import os
 import sys
 import tempfile
@@ -31,7 +29,6 @@ def kabsch(P, Q):
     the dimension of the space.
 
     The algorithm works in three steps:
-
     - a translation of P and Q
     - the computation of a covariance matrix C
     - computation of the optimal rotation matrix U
@@ -39,14 +36,12 @@ def kabsch(P, Q):
     http://en.wikipedia.org/wiki/Kabsch_algorithm
 
     Parameters:
-
     P -- (N, number of points)x(D, dimension) matrix
     Q -- (N, number of points)x(D, dimension) matrix
 
     Returns:
-
     U -- Rotation matrix
-    
+
     """
 
     # Computation of the covariance matrix
@@ -59,7 +54,6 @@ def kabsch(P, Q):
     # right-handed coordinate system.
     # And finally calculating the optimal rotation matrix U
     # see http://en.wikipedia.org/wiki/Kabsch_algorithm
-
     V, S, W = np.linalg.svd(C)
     d = (np.linalg.det(V) * np.linalg.det(W)) < 0.0
 
@@ -69,12 +63,10 @@ def kabsch(P, Q):
 
     # Create Rotation matrix U
     U = np.dot(V, W)
-    
+
     return U
 
-
 if __name__ == '__main__':
-
     option_parser = optparse.OptionParser()
     option_parser.add_option('--pet',help='PET file (assume input)',type='str',default='')
     option_parser.add_option('--mri',help='MRI file (assume reference)',type='str',default='')
@@ -88,14 +80,13 @@ if __name__ == '__main__':
     option_parser.add_option('--outmat',help='Transformation matrix from PET to MRI. Default out.mat',type='str',default='out.mat')
     option_parser.add_option('--noview',help='No FSLView',action='store_true',default=False)
     option_parser.add_option('--nodel',help='Not delete temp files',action='store_true',default=False)
+    option_parser.add_option('--checkorient',help='Check Orientation Neurological/Radiological',action='store_true',default=False)
     option_parser.add_option('--norevx',help='Not Reverse X direction',action='store_true',default=False)
     option_parser.add_option('--tpet',help='Threshold Value for PET. Defalut is no threshold',type='float',default=0)
     option_parser.add_option('--tmri',help='Threshold Value for MRI. Defalut is no threshold',type='float',default=0)
     option_parser.add_option('--kabsch',help='Use Kabsch algorithm instead of pointflirt',action='store_true',default=False)
     options,args = option_parser.parse_args()
-
     if len(sys.argv)==1:
-
         option_parser.print_help()
         sys.exit()
 
@@ -129,6 +120,7 @@ if __name__ == '__main__':
     mricfile = options.mricfile
     petcfile = options.petcfile
     nodel_flag = options.nodel
+    checkorient_flag = options.checkorient
     norevx_flag = options.norevx
     thresh_pet = options.tpet
     thresh_mri = options.tmri
@@ -137,43 +129,42 @@ if __name__ == '__main__':
     if len(saveimg)==0 or len(petorig)==0 or len(mriorig)==0:
         option_parser.print_help()
         sys.exit()
-
+        
     tmpf = tempfile.mktemp()
     petdelori = "%s_petdelori.nii.gz" % tmpf
     mridelori = "%s_mridelori.nii.gz" % tmpf
-
     shutil.copy(petorig,petdelori)
     shutil.copy(mriorig,mridelori)
-
     os.system("fslorient -deleteorient %s" % petdelori)
     os.system("fslorient -deleteorient %s" % mridelori)
-
-    #swap xdim to fix PET and MRI images are radiological and neurological
-
-    #if norevx_flag is False:
-        #os.system("fslswapdim %s -x y z %s" % (petdelori,petdelori))
+    #check orientation
+    if checkorient_flag is True:
+        os.system("fslorient -getorient %s > %s.orient_pet" % (petorig,tmpf))
+        os.system("fslorient -getorient %s > %s.orient_mri" % (mriorig,tmpf))
+        if open("%s.orient_pet" % (tmpf),"rt").read()!=open("%s.orient_mri" % (tmpf),"rt").read():
+            os.system("fslswapdim %s -x y z %s" % (petdelori,petdelori))
+            
+    #force to swap xdim to fix PET and MRI images are radiological and neurological
+    if norevx_flag is False and checkorient_flag is False:
+        os.system("fslswapdim %s -x y z %s" % (petdelori,petdelori))
 
     #determine points
-
     if len(mricfile)>0 or len(inmat)>0: #already define
-        fp = open(mricfile,"rt")
-        lines = fp.readlines()
-        no_point = len(lines)
-        mricoord = mricfile
-
+        if len(mricfile)>0:
+            fp = open(mricfile,"rt")
+            lines = fp.readlines()
+            no_point = len(lines)
+            mricoord = mricfile
     else:
         if noview_flag is not True:
             os.system("fslview %s &" % (mridelori))
-
         no_point = 1
         mripx = []
         mripy = []
         mripz = []
         while 1:
-
-            print "Please select No %d points (type # if you finish) in MRI(reference) image" % no_point
+            print("Please select No %d points (type # if you finish) in MRI(reference) image" % no_point)
             out = raw_input("center of X,Y,Z (mm): ")
-
             if out=="#":
                 break
             else:
@@ -194,27 +185,22 @@ if __name__ == '__main__':
                 os.system("fslmaths %s_mri%d.nii.gz -thr %g %s_mri%d.nii.gz" % (tmpf,i+1,thresh_mri,tmpf,i+1))
         #summary all points
         mriout = []
-
         fpmri = open(mricoord,"wt")
         for ip in range(no_point):
             output = getoutput("fslstats %s_mri%d.nii.gz -c" % (tmpf,ip+1))
             fpmri.write(output+"\n")
         fpmri.close()
-
     #for pet
-
     if len(petcfile)>0 or len(inmat)>0: #already define
         petcoord = petcfile
     else:
-
         if noview_flag is not True:
             os.system("fslview %s &" % (petdelori))
         petpx = []
         petpy = []
         petpz = []
-
         for ip in range(no_point):
-            print "Please select No %d points (Total %d) in PET(target) image" % (ip + 1,no_point)
+            print("Please select No %d points (Total %d) in PET(target) image" % (ip + 1,no_point))
             out = raw_input("center of X,Y,Z (mm): ")
             o2 = out.split()
             petpx.append(float(o2[0]))
@@ -231,7 +217,6 @@ if __name__ == '__main__':
                 os.system("fslmaths %s_pet%d.nii.gz -thr %g %s_pet%d.nii.gz" % (tmpf,i+1,thresh_pet,tmpf,i+1))
 
         #summary all points
-
         petout = []
         fppet = open(petcoord,"wt")
         for ip in range(no_point):
@@ -239,10 +224,7 @@ if __name__ == '__main__':
             fppet.write(output+"\n")
         fppet.close()
 
-
-
     #print "pointflirt -i %s -r %s -o %s" % (petcoord,mricoord,outmat)
-
     if kabsch_flag is True:
         fppet = open(petcoord,"rt")
         petxyz = fppet.readlines()
@@ -250,33 +232,25 @@ if __name__ == '__main__':
         fpmri = open(mricoord,"rt")
         mrixyz = fpmri.readlines()
         fpmri.close()
-
         pet_x = []
         pet_y = []
         pet_z = []
-
         for ipetxyz in petxyz:
             sp = ipetxyz.split()
             pet_x.append(float(sp[0]))
             pet_y.append(float(sp[1]))
             pet_z.append(float(sp[2]))
-
         mri_x = []
         mri_y = []
         mri_z = []
-
         for imrixyz in mrixyz:
-
             sp = imrixyz.split()
             mri_x.append(float(sp[0]))
             mri_y.append(float(sp[1]))
             mri_z.append(float(sp[2]))
 
-
-
         P = np.zeros((len(pet_x),3))
         Q = np.zeros((len(pet_x),3))
-        
         for i in range(len(pet_x)):
             P[i,0] = pet_x[i]
             P[i,1] = pet_y[i]
@@ -284,50 +258,38 @@ if __name__ == '__main__':
             Q[i,0] = mri_x[i]
             Q[i,1] = mri_y[i]
             Q[i,2] = mri_z[i]
-
         Pc = centroid(P)
         Qc = centroid(Q)
-
         P -= Pc
         Q -= Qc
-
         U = kabsch(P, Q)
         transp = np.array([[1,0,0,-Pc[0]],[0,1,0,-Pc[1]],[0,0,1,-Pc[2]],[0,0,0,1]])
         transq = np.array([[1,0,0,Qc[0]],[0,1,0,Qc[1]],[0,0,1,Qc[2]],[0,0,0,1]])
-
         U4x4 = np.zeros((4,4),'f')
         U4x4[0:3,0:3] = U[:,:]
         U4x4[3,3] = 1.0
         tU4x4 = np.transpose(U4x4)
         transmat = np.dot(transq,np.dot(tU4x4,transp))
-
         fp = open(outmat,"wt")
         fp.write("%g %g %g %g\n" % (transmat[0,0],transmat[0,1],transmat[0,2],transmat[0,3]))
         fp.write("%g %g %g %g\n" % (transmat[1,0],transmat[1,1],transmat[1,2],transmat[1,3]))
         fp.write("%g %g %g %g\n" % (transmat[2,0],transmat[2,1],transmat[2,2],transmat[2,3]))
         fp.write("%g %g %g %g\n" % (transmat[3,0],transmat[3,1],transmat[3,2],transmat[3,3]))
         fp.close()
-
     else:
         res = os.system("pointflirt -i %s -r %s -o %s" % (petcoord,mricoord,outmat))
-
     if len(inmat)>0:
         os.system("flirt -in %s -out %s -ref %s -applyxfm -init %s" % (petdelori,saveimg,mridelori,inmat))
     else:
         os.system("flirt -in %s -out %s -ref %s -applyxfm -init %s" % (petdelori,saveimg,mridelori,outmat))
-
     #bring back original sform
     os.system("fslorient -setsformcode 1 %s > /dev/null 2>&1" % (saveimg))
-
     #print("fslorient -setsform %s %s" % (mrisform,saveimg))
     os.system("fslorient -setsform %s %s > /dev/null 2>&1" % (mrisform,saveimg))
     os.system("fslorient -copysform2qform %s > /dev/null 2>&1" % (saveimg))
-
     #delete related files
-
     if nodel_flag is not True:
-        print "Removing tempfile %s" % tmpf
-        
+        print( "delete tempfile %s" % tmpf)
         for ip in range(no_point):
             try:
                 os.unlink("%s_pet%d.nii.gz" % (tmpf,ip+1))
