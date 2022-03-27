@@ -1,5 +1,13 @@
 # MultimodalRigidTransform
+## Instration
+point_reg.py purely works on Python3 envirenment.
+You may need to install the following packages py pip
+- optparse
+- numpy
+- commands
 
+
+## Usage
 *Point registration*
 Usage:
 point_reg.py [options]
