@@ -1,5 +1,5 @@
 # MultimodalRigidTransform
-## Instration
+## Installation
 point_reg.py purely works on Python3 envirenment.
 You may need to install the following packages py pip
 - optparse
